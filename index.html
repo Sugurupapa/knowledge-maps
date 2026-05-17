@@ -689,6 +689,7 @@ ${existing}
 
 ルール:
 - ラベルは日本語で10文字以内（英字略語はそのまま可）
+- descriptionは50文字以内、文中に引用符を使わないこと
 - idはsnake_case英数字のみ。既存idと重複不可
 - 既存カテゴリを優先。必要なら新カテゴリを追加
 - reorganizeで既存ノードの再編も可能
@@ -713,7 +714,7 @@ JSONのみ返すこと（説明・マークダウン不要）:
       body: JSON.stringify({
         system: 'You are a JSON-only responder. Output ONLY a valid JSON object — no prose, no markdown, no code fences, no explanation before or after. Your entire response must be parseable by JSON.parse().',
         model: model(),
-        max_tokens: 2048,
+        max_tokens: 4096,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         messages: [
           { role: 'user', content: prompt }
@@ -762,9 +763,43 @@ function toggleJsonMode() {
 }
 
 /* ══════════════════════════════════════════
+   TRUNCATION RECOVERY
+   If max_tokens cuts the JSON mid-stream, roll back to the last
+   complete array element (depth-2 closing }) and close the structure.
+══════════════════════════════════════════ */
+function repairTruncatedJson(s) {
+  let depth = 0, inStr = false, esc = false, lastSafePos = -1;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (esc)       { esc = false; continue; }
+    if (inStr)     { if (c==='\\') esc=true; if (c==='"') inStr=false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c==='{' || c==='[') depth++;
+    if (c==='}' || c===']') {
+      depth--;
+      if (depth === 2 && c === '}') lastSafePos = i; // end of a top-level array element
+    }
+  }
+  if (lastSafePos === -1) return s;
+
+  const truncated = s.slice(0, lastSafePos + 1);
+  const stack = [];
+  inStr = false; esc = false;
+  for (let i = 0; i < truncated.length; i++) {
+    const c = truncated[i];
+    if (esc)       { esc = false; continue; }
+    if (inStr)     { if (c==='\\') esc=true; if (c==='"') inStr=false; continue; }
+    if (c === '"') { inStr = true; continue; }
+    if (c==='{' || c==='[') stack.push(c==='{'?'}':']');
+    if ((c==='}'||c===']') && stack.length && stack[stack.length-1]===c) stack.pop();
+  }
+  return truncated + stack.reverse().join('');
+}
+
+/* ══════════════════════════════════════════
    ROBUST JSON EXTRACTOR
    Handles: prose before/after, ```json fences, raw objects,
-            trailing commas, truncated responses
+            trailing commas, missing commas, truncated responses
 ══════════════════════════════════════════ */
 function cleanJsonStr(s) {
   // Fix missing commas between } and { (all whitespace patterns, not just newlines)
@@ -790,26 +825,33 @@ function cleanJsonStr(s) {
   return out;
 }
 
+function parseWithFallback(s) {
+  const cleaned = cleanJsonStr(s);
+  try { return JSON.parse(cleaned); } catch(_) {}
+  // Fallback: repair truncation and retry
+  return JSON.parse(cleanJsonStr(repairTruncatedJson(s)));
+}
+
 function extractJson(text) {
   // 1. ```json ... ``` block anywhere in the text
   const fenced = text.match(/```json\s*([\s\S]*?)\s*```/);
-  if (fenced) return JSON.parse(cleanJsonStr(fenced[1].trim()));
+  if (fenced) return parseWithFallback(fenced[1].trim());
 
   // 2. ``` ... ``` block (no language tag)
   const plain = text.match(/```\s*([\s\S]*?)\s*```/);
   if (plain) {
-    try { return JSON.parse(cleanJsonStr(plain[1].trim())); } catch(_) {}
+    try { return parseWithFallback(plain[1].trim()); } catch(_) {}
   }
 
-  // 3. First { ... } object in the text
+  // 3. First { ... } to last } in the text
   const start = text.indexOf('{');
   const end   = text.lastIndexOf('}');
   if (start !== -1 && end > start) {
-    return JSON.parse(cleanJsonStr(text.slice(start, end + 1)));
+    return parseWithFallback(text.slice(start, end + 1));
   }
 
-  // 4. Fallback: parse as-is
-  return JSON.parse(cleanJsonStr(text.trim()));
+  // 4. Fallback: parse as-is with repair
+  return parseWithFallback(text.trim());
 }
 
 function applyJson() {
