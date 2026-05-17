@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Knowledge Maps — 知識マインドマップ</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.33.0/dist/tabler-icons.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #FAFAF8;
+      --bg2:     #F2F0EA;
+      --bg3:     #E8E6DF;
+      --border:  #D4D2C8;
+      --border2: #B0AEA6;
+      --text:    #1C1B18;
+      --text2:   #5C5B57;
+      --text3:   #88877F;
+      --accent:  #534AB7;
+      --accent2: #EEEDFE;
+      --ok:      #2D6011;
+      --ok2:     #E8F2DB;
+      --err:     #8C3418;
+      --err2:    #FAE8E2;
+      --r: 8px; --rs: 4px;
+      --shadow: 0 1px 4px rgba(0,0,0,0.08), 0 0 0 0.5px rgba(0,0,0,0.05);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #1A1918;
+        --bg2:     #222120;
+        --bg3:     #2C2B28;
+        --border:  #363430;
+        --border2: #484644;
+        --text:    #F0EEE8;
+        --text2:   #B0AEA6;
+        --text3:   #807E76;
+        --accent:  #AFA9EC;
+        --accent2: #302A82;
+        --ok:      #7AB840;
+        --ok2:     #1A3008;
+        --err:     #E8876A;
+        --err2:    #3A1408;
+        --shadow: 0 1px 4px rgba(0,0,0,0.4), 0 0 0 0.5px rgba(255,255,255,0.05);
+      }
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+      background: var(--bg); color: var(--text);
+      height: 100dvh; overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      height: 48px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; padding: 0 16px; gap: 10px;
+      flex-shrink: 0; background: var(--bg); z-index: 10;
+    }
+    .logo { display: flex; align-items: center; gap: 8px; text-decoration: none; }
+    .logo i { font-size: 19px; color: var(--accent); }
+    .logo-text { font-size: 14px; font-weight: 600; color: var(--text); }
+    .logo-sub { font-size: 11px; color: var(--text3); margin-left: 1px; }
+    .hdr-spacer { flex: 1; }
+    .hdr-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--text3); padding: 4px 8px; border-radius: var(--rs);
+      font-size: 12px; display: flex; align-items: center; gap: 5px;
+    }
+    .hdr-btn:hover { background: var(--bg3); color: var(--text); }
+    .hdr-btn i { font-size: 16px; }
+
+    /* ── Layout ── */
+    .app { display: flex; flex: 1; min-height: 0; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 196px; flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      background: var(--bg2);
+    }
+    .sidebar-hdr {
+      padding: 9px 12px 8px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .sidebar-label { font-size: 10px; font-weight: 600; color: var(--text3); letter-spacing: .08em; text-transform: uppercase; }
+    .theme-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+    .theme-empty { padding: 20px 12px; text-align: center; font-size: 11px; color: var(--text3); line-height: 1.6; }
+    .theme-item {
+      display: flex; align-items: center; gap: 7px;
+      padding: 7px 12px; cursor: pointer;
+      border-left: 2px solid transparent;
+    }
+    .theme-item:hover { background: var(--bg3); }
+    .theme-item.active { background: var(--bg); border-left-color: var(--accent); }
+    .theme-item .ti { font-size: 13px; color: var(--text3); flex-shrink: 0; }
+    .theme-item.active .ti { color: var(--accent); }
+    .theme-info { flex: 1; min-width: 0; }
+    .theme-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .theme-item.active .theme-name { font-weight: 500; }
+    .theme-ct { font-size: 10px; color: var(--text3); }
+    .theme-del {
+      background: none; border: none; cursor: pointer;
+      color: var(--text2); padding: 2px 4px; border-radius: 3px;
+      font-size: 11px; opacity: 0; flex-shrink: 0;
+    }
+    .theme-item:hover .theme-del { opacity: 1; }
+    .theme-del:hover { background: var(--err2); color: var(--err); }
+    .sidebar-footer { border-top: 1px solid var(--border); padding: 8px; }
+
+    /* ── Main ── */
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+
+    /* ── Input bar ── */
+    .input-bar {
+      padding: 8px 12px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+    }
+    .input-bar i { font-size: 15px; color: var(--text3); flex-shrink: 0; }
+    .input-bar input { flex: 1; font-size: 13px; }
+    .json-panel {
+      display: none; padding: 8px 12px;
+      border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0;
+    }
+    .json-panel.open { display: block; }
+    .json-row { display: flex; gap: 8px; align-items: flex-start; }
+    .json-panel textarea {
+      flex: 1; height: 58px; font-size: 11px;
+      font-family: 'SF Mono','Fira Code', monospace; resize: none; padding: 7px 8px;
+    }
+    .json-actions { display: flex; flex-direction: column; gap: 5px; flex-shrink: 0; }
+
+    /* ── Status ── */
+    .status {
+      min-height: 24px; padding: 3px 12px; font-size: 11px;
+      display: flex; align-items: center; gap: 6px; flex-shrink: 0; color: var(--text2);
+    }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--err); }
+
+    /* ── Map ── */
+    .map-wrap { flex: 1; min-height: 0; position: relative; }
+    #map { width: 100%; height: 100%; display: block; }
+    .map-placeholder {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 8px;
+      pointer-events: none;
+    }
+    .map-placeholder i { font-size: 32px; color: var(--text3); }
+    .map-placeholder p { font-size: 13px; color: var(--text3); }
+    .map-controls { position: absolute; top: 10px; right: 12px; display: flex; gap: 5px; }
+    #tip {
+      display: none; position: absolute;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 9px 12px;
+      font-size: 12px; max-width: 220px;
+      pointer-events: none; z-index: 10;
+      box-shadow: var(--shadow); line-height: 1.55;
+    }
+
+    /* ── Footer ── */
+    .map-footer {
+      border-top: 1px solid var(--border); padding: 6px 12px;
+      min-height: 32px; max-height: 72px; overflow-y: auto;
+      display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+      flex-shrink: 0;
+    }
+    .tag { font-size: 10px; padding: 2px 8px; border-radius: 3px; white-space: nowrap; }
+    .art-link {
+      font-size: 10px; color: var(--accent); text-decoration: none;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      max-width: 160px; display: inline-block; vertical-align: bottom;
+    }
+    .art-link:hover { text-decoration: underline; }
+    .sep { color: var(--border2); margin: 0 3px; }
+
+    /* ── Buttons ── */
+    button {
+      border: 1px solid var(--border); border-radius: var(--rs);
+      background: var(--bg); color: var(--text); cursor: pointer;
+      padding: 5px 12px; font-size: 13px; font-family: inherit;
+    }
+    button:hover { background: var(--bg3); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn-primary:hover { opacity: .88; background: var(--accent); }
+    .btn-sm { font-size: 11px; padding: 3px 9px; }
+    .btn-ghost { border-color: transparent; background: none; }
+    .btn-ghost:hover { background: var(--bg3); }
+
+    /* ── Inputs ── */
+    input, textarea {
+      border: 1px solid var(--border); border-radius: var(--rs);
+      background: var(--bg); color: var(--text);
+      font-family: inherit; outline: none;
+      padding: 6px 10px; font-size: 13px; width: 100%;
+    }
+    input:focus, textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2.5px var(--accent2);
+    }
+
+    /* ── Modal ── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,.22); z-index: 200;
+      align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: var(--r); padding: 22px 24px;
+      width: min(420px, 92vw); box-shadow: var(--shadow);
+    }
+    .modal h2 { font-size: 14px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 7px; }
+    .modal label { font-size: 12px; color: var(--text2); display: block; margin-bottom: 5px; }
+    .modal p { font-size: 12px; color: var(--text2); line-height: 1.65; margin-bottom: 12px; }
+    .modal a { color: var(--accent); }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+    .modal-section { margin-bottom: 14px; }
+    .info-box {
+      background: var(--accent2); border: 1px solid var(--accent);
+      border-radius: var(--rs); padding: 9px 12px;
+      font-size: 11px; color: var(--text2); line-height: 1.6; margin-top: 10px;
+    }
+    .badge {
+      display: inline-block; font-size: 10px; padding: 1px 6px;
+      border-radius: 3px; background: var(--ok2); color: var(--ok);
+      border: 1px solid var(--ok); margin-left: 6px;
+    }
+
+    /* ── Spinner ── */
+    .spinner {
+      display: inline-block; width: 10px; height: 10px;
+      border: 1.5px solid var(--border2); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin .7s linear infinite; flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <i class="ti ti-topology-star-3"></i>
+    <span class="logo-text">Knowledge Maps</span>
+    <span class="logo-sub">知識マインドマップ</span>
+  </div>
+  <div class="hdr-spacer"></div>
+  <button class="hdr-btn" onclick="openSettings()" title="設定・APIキー">
+    <i class="ti ti-settings"></i><span>設定</span>
+  </button>
+</header>
+
+<div class="app">
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-hdr">
+      <span class="sidebar-label">テーマ一覧</span>
+    </div>
+    <div class="theme-list" id="theme-list"></div>
+    <div class="sidebar-footer">
+      <button onclick="openNewTheme()" style="width:100%;text-align:left;display:flex;align-items:center;gap:6px;font-size:12px;">
+        <i class="ti ti-plus" style="font-size:14px;"></i>新規テーマ
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <main class="main">
+    <!-- URL input bar -->
+    <div class="input-bar">
+      <i class="ti ti-link"></i>
+      <input type="url" id="url-input" placeholder="記事URLを入力して自動解析 →" autocomplete="off" />
+      <button id="analyze-btn" class="btn-primary btn-sm" onclick="analyzeUrl()" style="white-space:nowrap;">解析 ↗</button>
+      <button class="btn-sm btn-ghost" onclick="toggleJsonMode()" id="mode-btn" title="JSONを直接貼り付けるモード" style="color:var(--text3);">JSON</button>
+    </div>
+
+    <!-- JSON paste panel -->
+    <div class="json-panel" id="json-panel">
+      <div class="json-row">
+        <textarea id="json-in" placeholder="ClaudeチャットでURLを渡して生成されたJSONをここに貼り付け..."></textarea>
+        <div class="json-actions">
+          <button onclick="applyJson()" class="btn-primary btn-sm">適用 ↗</button>
+          <button onclick="toggleJsonMode()" class="btn-sm" style="font-size:10px;">閉じる</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Status line -->
+    <div class="status" id="status"></div>
+
+    <!-- Mind map -->
+    <div class="map-wrap">
+      <svg id="map"></svg>
+      <div id="tip"></div>
+
+      <div class="map-placeholder" id="ph-no-theme" style="display:flex;">
+        <i class="ti ti-layout-sidebar"></i>
+        <p>左のサイドバーからテーマを選択、または新規作成</p>
+      </div>
+      <div class="map-placeholder" id="ph-empty" style="display:none;">
+        <i class="ti ti-topology-star-3"></i>
+        <p>URLを入力するか、JSONを追加してマップを開始</p>
+      </div>
+
+      <div class="map-controls">
+        <button class="btn-sm" onclick="fitMap()" title="全体表示"><i class="ti ti-maximize"></i></button>
+        <button class="btn-sm" onclick="resetTheme()" title="テーマをリセット" style="color:var(--text3);"><i class="ti ti-refresh"></i></button>
+      </div>
+    </div>
+
+    <!-- Legend + articles -->
+    <div class="map-footer" id="map-footer"></div>
+  </main>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settings-modal">
+  <div class="modal">
+    <h2><i class="ti ti-settings" style="color:var(--text3);"></i>設定</h2>
+
+    <div class="modal-section">
+      <label>Anthropic API キー</label>
+      <p>URLの自動解析機能を使うには、<a href="https://console.anthropic.com/keys" target="_blank">Anthropic Console</a> でAPIキーを取得して入力してください。<br>キーはブラウザの <code style="font-size:10px;background:var(--bg3);padding:1px 4px;border-radius:2px;">localStorage</code> にのみ保存され、サーバーへの送信はありません。</p>
+      <input type="password" id="api-key-input" placeholder="sk-ant-..." />
+    </div>
+
+    <div class="modal-section">
+      <label>モデル <span class="badge">変更可</span></label>
+      <input type="text" id="model-input" placeholder="例: claude-opus-4-5" />
+    </div>
+
+    <div class="info-box">
+      <b>APIキーなしでも使えます：</b><br>
+      Claudeチャット（claude.ai）にURLを貼り付けると解析JSONが生成されます。
+      それをこのアプリの「JSON」ボタンから貼り付ければマップに追加できます。
+    </div>
+
+    <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;">
+      <button class="btn-sm" style="color:var(--err);border-color:transparent;background:none;" onclick="clearAllData()">
+        <i class="ti ti-trash" style="font-size:12px;"></i> データを全削除
+      </button>
+      <div class="modal-footer" style="margin:0;">
+        <button onclick="closeSettings()">キャンセル</button>
+        <button onclick="saveSettings()" class="btn-primary">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- New Theme Modal -->
+<div class="modal-overlay" id="new-theme-modal">
+  <div class="modal" style="width:min(340px,92vw);">
+    <h2><i class="ti ti-plus" style="color:var(--text3);"></i>新規テーマを作成</h2>
+    <div class="modal-section">
+      <label>テーマ名</label>
+      <input type="text" id="new-theme-name" placeholder="例: AI・機械学習" style="margin-bottom:8px;" />
+      <div style="font-size:11px;color:var(--text3);">ルートノード：<span id="root-preview" style="color:var(--text2);">—</span></div>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeNewTheme()">キャンセル</button>
+      <button onclick="confirmNewTheme()" class="btn-primary">作成 ↗</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ══════════════════════════════════════════
+   CONSTANTS & COLOR SYSTEM
+══════════════════════════════════════════ */
+const SK    = 'knowledge-maps-v1';
+const CATS  = ['purple','teal','coral','blue','amber','green','pink'];
+const RAMPS = {
+  gray:  [['#F1EFE8','#888780','#2C2C2A'],['#3C3B38','#B4B2A9','#F1EFE8']],
+  purple:[['#EEEDFE','#534AB7','#26215C'],['#3C3489','#AFA9EC','#EEEDFE']],
+  teal:  [['#E1F5EE','#0F6E56','#04342C'],['#085041','#5DCAA5','#E1F5EE']],
+  coral: [['#FAECE7','#993C1D','#4A1B0C'],['#712B13','#F0997B','#FAECE7']],
+  blue:  [['#E6F1FB','#185FA5','#042C53'],['#0C447C','#85B7EB','#E6F1FB']],
+  amber: [['#FAEEDA','#854F0B','#412402'],['#633806','#EF9F27','#FAEEDA']],
+  green: [['#EAF3DE','#3B6D11','#173404'],['#27500A','#97C459','#EAF3DE']],
+  pink:  [['#FBEAF0','#993356','#4B1528'],['#72243E','#ED93B1','#FBEAF0']]
+};
+const dk    = () => window.matchMedia('(prefers-color-scheme:dark)').matches;
+const ramp  = n => (RAMPS[n] || RAMPS.gray)[dk() ? 1 : 0];
+const rFill = n => ramp(n)[0];
+const rStr  = n => ramp(n)[1];
+const rTxt  = n => ramp(n)[2];
+
+/* ══════════════════════════════════════════
+   STATE
+══════════════════════════════════════════ */
+let app = { themes: {}, aid: null };
+let zoomBeh, gMain;
+let jsonMode = false;
+
+const gid    = () => 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+const th     = () => app.themes[app.aid];
+const apiKey = () => localStorage.getItem('km-api-key') || '';
+const model  = () => localStorage.getItem('km-model') || 'claude-opus-4-5';
+
+function colorOf(id, nodes, cc, d = 0) {
+  if (d > 10 || id === 'root') return 'gray';
+  if (cc[id]) return cc[id];
+  const n = nodes.find(x => x.id === id);
+  if (!n || !n.parentId) return 'gray';
+  return colorOf(n.parentId, nodes, cc, d + 1);
+}
+
+/* ══════════════════════════════════════════
+   STORAGE (localStorage)
+══════════════════════════════════════════ */
+function loadData() {
+  try {
+    const raw = localStorage.getItem(SK);
+    if (raw) {
+      app = JSON.parse(raw);
+      if (!app.aid || !app.themes[app.aid])
+        app.aid = Object.keys(app.themes)[0] || null;
+    }
+  } catch(e) {}
+  renderAll();
+  if (!apiKey()) setTimeout(openSettings, 700);
+}
+
+function saveData() {
+  localStorage.setItem(SK, JSON.stringify(app));
+}
+
+/* ══════════════════════════════════════════
+   SETTINGS
+══════════════════════════════════════════ */
+function openSettings() {
+  document.getElementById('api-key-input').value = apiKey();
+  document.getElementById('model-input').value   = model();
+  document.getElementById('settings-modal').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settings-modal').classList.remove('open');
+}
+function saveSettings() {
+  const k = document.getElementById('api-key-input').value.trim();
+  const m = document.getElementById('model-input').value.trim();
+  if (k) localStorage.setItem('km-api-key', k); else localStorage.removeItem('km-api-key');
+  if (m) localStorage.setItem('km-model', m);   else localStorage.removeItem('km-model');
+  closeSettings();
+  setStatus('✓ 設定を保存しました', 'ok');
+}
+function clearAllData() {
+  if (!confirm('すべてのデータ（テーマ・マップ・設定）を削除しますか？')) return;
+  localStorage.removeItem(SK);
+  app = { themes: {}, aid: null };
+  closeSettings();
+  renderAll();
+}
+
+/* ══════════════════════════════════════════
+   THEME MANAGEMENT
+══════════════════════════════════════════ */
+function openNewTheme() {
+  document.getElementById('new-theme-name').value = '';
+  document.getElementById('root-preview').textContent = '—';
+  document.getElementById('new-theme-modal').classList.add('open');
+  setTimeout(() => document.getElementById('new-theme-name').focus(), 40);
+}
+function closeNewTheme() {
+  document.getElementById('new-theme-modal').classList.remove('open');
+}
+function confirmNewTheme() {
+  const name = document.getElementById('new-theme-name').value.trim();
+  if (!name) return;
+  const tid = gid();
+  app.themes[tid] = {
+    name,
+    nodes: [{ id: 'root', label: name + '知識', parentId: null }],
+    articles: [], catColors: {}, cidx: 0
+  };
+  app.aid = tid;
+  closeNewTheme();
+  saveData();
+  renderAll();
+}
+function switchTheme(id) { app.aid = id; renderAll(); }
+function delTheme(id) {
+  if (!confirm(`「${app.themes[id]?.name}」を削除しますか？`)) return;
+  delete app.themes[id];
+  if (app.aid === id) app.aid = Object.keys(app.themes)[0] || null;
+  saveData(); renderAll();
+}
+function resetTheme() {
+  const t = th();
+  if (!t || !confirm(`「${t.name}」のマップをリセットしますか？`)) return;
+  t.nodes = [{ id: 'root', label: t.name + '知識', parentId: null }];
+  t.articles = []; t.catColors = {}; t.cidx = 0;
+  saveData(); renderAll();
+}
+
+/* ══════════════════════════════════════════
+   RENDER — SIDEBAR
+══════════════════════════════════════════ */
+function renderSidebar() {
+  const list = document.getElementById('theme-list');
+  const ids  = Object.keys(app.themes);
+  if (!ids.length) {
+    list.innerHTML = '<div class="theme-empty">テーマがありません<br>「新規テーマ」から作成してください</div>';
+    return;
+  }
+  list.innerHTML = ids.map(id => {
+    const t  = app.themes[id];
+    const ac = id === app.aid;
+    const nc = t.nodes.filter(n => n.id !== 'root').length;
+    return `<div class="theme-item ${ac ? 'active' : ''}" onclick="switchTheme('${id}')">
+      <i class="ti ti-map-2"></i>
+      <div class="theme-info">
+        <div class="theme-name">${escHtml(t.name)}</div>
+        <div class="theme-ct">${nc} ノード</div>
+      </div>
+      <button class="theme-del" onclick="event.stopPropagation();delTheme('${id}')" title="削除">
+        <i class="ti ti-x"></i>
+      </button>
+    </div>`;
+  }).join('');
+}
+
+/* ══════════════════════════════════════════
+   RENDER — MAP (D3 radial tree)
+══════════════════════════════════════════ */
+function renderMap() {
+  const t = th(); if (!t) return;
+  const wr = document.querySelector('.map-wrap');
+  const W  = wr.clientWidth  || 800;
+  const H  = wr.clientHeight || 500;
+  const svg = d3.select('#map'); svg.selectAll('*').remove();
+
+  zoomBeh = d3.zoom().scaleExtent([0.06, 7])
+    .on('zoom', e => gMain.attr('transform', e.transform));
+  svg.call(zoomBeh);
+  gMain = svg.append('g').attr('transform', `translate(${W/2},${H/2})`);
+
+  // Build hierarchy
+  const m = {};
+  t.nodes.forEach(n => m[n.id] = { ...n, children: [] });
+  t.nodes.forEach(n => { if (n.parentId && m[n.parentId]) m[n.parentId].children.push(m[n.id]); });
+  if (!m['root']) return;
+
+  const hier = d3.hierarchy(m['root']);
+  const rad  = Math.min(W, H) * 0.38;
+  d3.tree().size([2 * Math.PI, rad])(hier);
+
+  // Links
+  const lc = dk() ? '#2E2D2A' : '#D4D2C8';
+  gMain.selectAll('path.lk').data(hier.links()).join('path')
+    .attr('class', 'lk').attr('fill', 'none').attr('stroke', lc).attr('stroke-width', 1)
+    .attr('d', d3.linkRadial().angle(d => d.x).radius(d => d.y));
+
+  // Nodes
+  const nd = gMain.selectAll('g.nd').data(hier.descendants()).join('g')
+    .attr('class', 'nd')
+    .attr('transform', d => `rotate(${d.x * 180 / Math.PI - 90}) translate(${d.y}, 0)`)
+    .style('cursor', d => d.data.url ? 'pointer' : 'default')
+    .on('mouseover', showTip).on('mouseout', hideTip)
+    .on('click', (_, d) => { if (d.data.url) window.open(d.data.url, '_blank', 'noopener'); });
+
+  nd.append('circle')
+    .attr('r', d => d.depth === 0 ? 22 : d.depth === 1 ? 14 : 7)
+    .attr('fill',   d => rFill(colorOf(d.data.id, t.nodes, t.catColors)))
+    .attr('stroke', d => rStr(colorOf(d.data.id, t.nodes, t.catColors)))
+    .attr('stroke-width', 1.5);
+
+  const textColor = dk() ? '#F0EEE8' : '#1C1B18';
+  nd.append('text').attr('dy', '0.32em')
+    .attr('x', d => d.depth === 0 ? 0 : (d.x < Math.PI ? 16 : -16))
+    .attr('text-anchor', d => d.depth === 0 ? 'middle' : (d.x < Math.PI ? 'start' : 'end'))
+    .attr('transform', d => d.depth > 0 && d.x >= Math.PI ? 'rotate(180)' : null)
+    .style('fill', textColor)
+    .style('font-size', d => d.depth === 0 ? '13px' : d.depth === 1 ? '12px' : '11px')
+    .style('font-weight', d => d.depth <= 1 ? '500' : '400')
+    .text(d => d.data.label.length > 16 ? d.data.label.slice(0, 15) + '…' : d.data.label);
+}
+
+function fitMap() {
+  const wr = document.querySelector('.map-wrap');
+  const W = wr.clientWidth || 800, H = wr.clientHeight || 500;
+  if (zoomBeh) d3.select('#map').call(zoomBeh.transform, d3.zoomIdentity.translate(W/2, H/2));
+}
+
+/* ══════════════════════════════════════════
+   RENDER — FOOTER
+══════════════════════════════════════════ */
+function renderFooter() {
+  const t  = th();
+  const el = document.getElementById('map-footer');
+  if (!t) { el.innerHTML = ''; return; }
+  const cats = t.nodes.filter(n => n.parentId === 'root');
+  const tags = cats.map(c => {
+    const col = t.catColors[c.id] || 'gray';
+    return `<span class="tag" style="background:${rFill(col)};color:${rTxt(col)};border:0.5px solid ${rStr(col)};">${escHtml(c.label)}</span>`;
+  }).join('');
+  const arts = t.articles.slice(-6).reverse().map(a =>
+    `<a class="art-link" href="${escAttr(a.url)}" target="_blank" rel="noopener">
+      <i class="ti ti-file-text" style="font-size:10px;"></i> ${escHtml(a.title || a.url)}
+    </a>`
+  ).join('');
+  el.innerHTML = tags + (arts ? `<span class="sep">|</span>${arts}` : '');
+}
+
+/* ══════════════════════════════════════════
+   RENDER — ALL
+══════════════════════════════════════════ */
+function renderAll() {
+  renderSidebar();
+  const t = th();
+  const phNone  = document.getElementById('ph-no-theme');
+  const phEmpty = document.getElementById('ph-empty');
+  if (!t) {
+    phNone.style.display  = 'flex';
+    phEmpty.style.display = 'none';
+    d3.select('#map').selectAll('*').remove();
+    document.getElementById('map-footer').innerHTML = '';
+    return;
+  }
+  phNone.style.display = 'none';
+  const has = t.nodes.length > 1;
+  phEmpty.style.display = has ? 'none' : 'flex';
+  if (has) renderMap(); else d3.select('#map').selectAll('*').remove();
+  renderFooter();
+}
+
+/* ══════════════════════════════════════════
+   TOOLTIP
+══════════════════════════════════════════ */
+function showTip(event, d) {
+  const tt = document.getElementById('tip');
+  const wr = document.querySelector('.map-wrap').getBoundingClientRect();
+  let h = `<div style="font-weight:600;margin-bottom:3px;">${escHtml(d.data.label)}</div>`;
+  if (d.data.description) h += `<div style="color:var(--text2);">${escHtml(d.data.description)}</div>`;
+  if (d.data.url) h += `<div style="color:var(--accent);font-size:10px;margin-top:5px;"><i class="ti ti-external-link"></i> クリックで記事を開く</div>`;
+  if (d.data.sourceTitle) h += `<div style="color:var(--text3);font-size:10px;margin-top:2px;">${escHtml(d.data.sourceTitle)}</div>`;
+  tt.innerHTML = h; tt.style.display = 'block';
+  const x = event.clientX - wr.left, y = event.clientY - wr.top;
+  tt.style.left = Math.min(x + 14, wr.width  - 234) + 'px';
+  tt.style.top  = Math.min(y + 14, wr.height - 110) + 'px';
+}
+function hideTip() { document.getElementById('tip').style.display = 'none'; }
+
+/* ══════════════════════════════════════════
+   STATUS
+══════════════════════════════════════════ */
+function setStatus(msg, type = '') {
+  const el = document.getElementById('status');
+  el.className = 'status ' + type;
+  el.innerHTML = type === 'loading' ? `<span class="spinner"></span>${msg}` : msg;
+}
+
+/* ══════════════════════════════════════════
+   API — ANALYZE URL (direct browser call)
+   Uses: anthropic-dangerous-direct-browser-access header
+   Model and key configurable via Settings
+══════════════════════════════════════════ */
+async function analyzeUrl() {
+  const t   = th();
+  const url = document.getElementById('url-input').value.trim();
+  if (!t)   { setStatus('テーマを選択してください', 'err'); return; }
+  if (!url) { setStatus('URLを入力してください', 'err'); return; }
+  if (!url.startsWith('http')) { setStatus('有効なURLを入力してください', 'err'); return; }
+  if (t.articles.find(a => a.url === url)) { setStatus('この記事はすでに追加されています', 'err'); return; }
+  if (!apiKey()) { openSettings(); setStatus('APIキーを設定してください', 'err'); return; }
+
+  document.getElementById('analyze-btn').disabled = true;
+  setStatus('記事を取得・解析中...', 'loading');
+
+  const existing = t.nodes
+    .map(n => `id="${n.id}" label="${n.label}" parentId="${n.parentId || ''}"`)
+    .join('\n');
+
+  const prompt = `あなたは知識体系を構築するエキスパートです。テーマは「${t.name}」です。
+
+URLの記事をweb_searchで読み、マインドマップに追加する概念をJSON形式で抽出してください。
+
+URL: ${url}
+
+現在のマインドマップのノード:
+${existing}
+
+ルール:
+- ラベルは日本語で10文字以内（英字略語はそのまま可）
+- idはsnake_case英数字のみ。既存idと重複不可
+- 既存カテゴリを優先。必要なら新カテゴリを追加
+- reorganizeで既存ノードの再編も可能
+
+JSONのみ返すこと（説明・マークダウン不要）:
+{
+  "articleTitle": "記事タイトル",
+  "newCategories": [{"id":"cat_xxx","label":"カテゴリ名","parentId":"root"}],
+  "newNodes": [{"id":"node_xxx","label":"概念名","parentId":"cat_xxx","description":"1文説明","url":"${url}","sourceTitle":"記事タイトル"}],
+  "reorganize": []
+}`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-version': '2023-06-01',
+        'x-api-key': apiKey(),
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: model(),
+        max_tokens: 1024,
+        tools: [{ type: 'web_search_20250305', name: 'web_search' }],
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.error?.message || `HTTP ${res.status}`);
+    }
+
+    const result  = await res.json();
+    const txtBlk  = result.content?.find(b => b.type === 'text');
+    if (!txtBlk?.text) throw new Error('テキスト応答がありません');
+
+    const jsonStr = txtBlk.text.trim()
+      .replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+    applyParsed(JSON.parse(jsonStr));
+    document.getElementById('url-input').value = '';
+
+  } catch(e) {
+    setStatus('解析エラー: ' + e.message, 'err');
+    console.error('[KM] analyzeUrl error:', e);
+  }
+  document.getElementById('analyze-btn').disabled = false;
+}
+
+/* ══════════════════════════════════════════
+   JSON MODE
+══════════════════════════════════════════ */
+function toggleJsonMode() {
+  jsonMode = !jsonMode;
+  document.getElementById('json-panel').classList.toggle('open', jsonMode);
+  document.getElementById('mode-btn').textContent = jsonMode ? 'URL' : 'JSON';
+  if (jsonMode) setTimeout(() => document.getElementById('json-in').focus(), 30);
+  setTimeout(renderAll, 30);
+}
+
+function applyJson() {
+  const raw = document.getElementById('json-in').value.trim();
+  if (!raw) { setStatus('JSONを貼り付けてください', 'err'); return; }
+  try {
+    const clean = raw.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+    applyParsed(JSON.parse(clean));
+    document.getElementById('json-in').value = '';
+  } catch(e) {
+    setStatus('JSON形式エラー: ' + e.message, 'err');
+  }
+}
+
+/* ══════════════════════════════════════════
+   APPLY PARSED JSON (add + reorganize)
+══════════════════════════════════════════ */
+function applyParsed(parsed) {
+  const t = th();
+  if (!t) { setStatus('テーマを選択してください', 'err'); return; }
+  let ca = 0, na = 0, ra = 0;
+
+  // New categories
+  (parsed.newCategories || []).forEach(cat => {
+    if (!t.nodes.find(n => n.id === cat.id)) {
+      const col = CATS[t.cidx % CATS.length]; t.cidx++;
+      t.catColors[cat.id] = col;
+      t.nodes.push({ ...cat, color: col }); ca++;
+    }
+  });
+
+  // New nodes
+  (parsed.newNodes || []).forEach(node => {
+    if (!t.nodes.find(n => n.id === node.id) && t.nodes.find(n => n.id === node.parentId)) {
+      t.nodes.push(node); na++;
+    }
+  });
+
+  // Reorganize: move / rename / merge
+  (parsed.reorganize || []).forEach(act => {
+    if (act.action === 'move') {
+      const n = t.nodes.find(x => x.id === act.nodeId);
+      if (n && t.nodes.find(x => x.id === act.newParentId)) { n.parentId = act.newParentId; ra++; }
+    } else if (act.action === 'rename') {
+      const n = t.nodes.find(x => x.id === act.nodeId);
+      if (n) { n.label = act.newLabel; ra++; }
+    } else if (act.action === 'merge') {
+      t.nodes.forEach(n => { if (n.parentId === act.fromId) n.parentId = act.intoId; });
+      t.nodes = t.nodes.filter(n => n.id !== act.fromId);
+      delete t.catColors[act.fromId]; ra++;
+    }
+  });
+
+  // Record article
+  if (parsed.articleTitle) {
+    const url = (parsed.newNodes || [])[0]?.url || '';
+    if (!t.articles.find(a => a.title === parsed.articleTitle))
+      t.articles.push({ url, title: parsed.articleTitle, addedAt: new Date().toISOString() });
+  }
+
+  saveData(); renderAll();
+  const parts = [];
+  if (ca) parts.push(`カテゴリ ${ca}件`);
+  if (na) parts.push(`概念 ${na}件`);
+  if (ra) parts.push(`再編 ${ra}件`);
+  setStatus('✓ ' + (parts.join('・') || '変更なし') + ' を適用しました', 'ok');
+}
+
+/* ══════════════════════════════════════════
+   UTILITIES
+══════════════════════════════════════════ */
+function escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(str) { return escHtml(str); }
+
+/* ══════════════════════════════════════════
+   EVENT LISTENERS
+══════════════════════════════════════════ */
+document.getElementById('url-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') analyzeUrl();
+});
+document.getElementById('new-theme-name').addEventListener('input', () => {
+  const v = document.getElementById('new-theme-name').value.trim();
+  document.getElementById('root-preview').textContent = v ? v + '知識' : '—';
+});
+document.getElementById('new-theme-name').addEventListener('keydown', e => {
+  if (e.key === 'Enter')  confirmNewTheme();
+  if (e.key === 'Escape') closeNewTheme();
+});
+document.getElementById('api-key-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') saveSettings();
+});
+
+// Close modals on overlay click
+['settings-modal', 'new-theme-modal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => {
+    if (e.target.id === id) document.getElementById(id).classList.remove('open');
+  });
+});
+
+window.addEventListener('resize', () => {
+  clearTimeout(window._rt);
+  window._rt = setTimeout(renderAll, 120);
+});
+window.matchMedia('(prefers-color-scheme:dark)').addEventListener('change', renderAll);
+
+/* ══════════════════════════════════════════
+   INIT
+══════════════════════════════════════════ */
+loadData();
+</script>
+</body>
+</html>
