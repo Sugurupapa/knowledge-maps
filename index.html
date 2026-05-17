@@ -730,10 +730,20 @@ JSONのみ返すこと（説明・マークダウン不要）:
     const txtBlk  = result.content?.find(b => b.type === 'text');
     if (!txtBlk?.text) throw new Error('テキスト応答がありません');
 
+    window._lastRawText = txtBlk.text; // for debugging
     applyParsed(extractJson(txtBlk.text));
     document.getElementById('url-input').value = '';
 
   } catch(e) {
+    // Show JSON context around the parse error position
+    if (window._lastRawText) {
+      const pos = parseInt(e.message.match(/position (\d+)/)?.[1] || '-1');
+      if (pos >= 0) {
+        const ctx = window._lastRawText.slice(Math.max(0, pos - 80), pos + 80);
+        console.error('[KM] Raw text around error (pos ' + pos + '):\n' + ctx);
+        console.error('[KM] Full raw text:\n', window._lastRawText);
+      }
+    }
     setStatus('解析エラー: ' + e.message, 'err');
     console.error('[KM] analyzeUrl error:', e);
   }
@@ -757,9 +767,9 @@ function toggleJsonMode() {
             trailing commas, truncated responses
 ══════════════════════════════════════════ */
 function cleanJsonStr(s) {
-  // Fix missing commas between } and { in arrays (most common Claude issue)
-  s = s.replace(/\}\s*\n(\s*)\{/g,  '},\n$1{');
-  s = s.replace(/\]\s*\n(\s*)\[/g,  '],\n$1[');
+  // Fix missing commas between } and { (all whitespace patterns, not just newlines)
+  s = s.replace(/\}(\s*)\{/g, '},$1{');
+  s = s.replace(/\](\s*)\[/g, '],$1[');
   // Remove trailing commas before ] or }
   s = s.replace(/,(\s*[\]}])/g, '$1');
 
