@@ -714,7 +714,10 @@ JSONのみ返すこと（説明・マークダウン不要）:
         model: model(),
         max_tokens: 2048,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-        messages: [{ role: 'user', content: prompt }]
+        messages: [
+          { role: 'user', content: prompt },
+          { role: 'assistant', content: '{' }  // prefill: force JSON start
+        ]
       })
     });
 
@@ -727,7 +730,7 @@ JSONのみ返すこと（説明・マークダウン不要）:
     const txtBlk  = result.content?.find(b => b.type === 'text');
     if (!txtBlk?.text) throw new Error('テキスト応答がありません');
 
-    applyParsed(extractJson(txtBlk.text));
+    applyParsed(extractJson('{' + txtBlk.text));
     document.getElementById('url-input').value = '';
 
   } catch(e) {
@@ -754,11 +757,13 @@ function toggleJsonMode() {
             trailing commas, truncated responses
 ══════════════════════════════════════════ */
 function cleanJsonStr(s) {
-  // Pass 1: remove trailing commas before ] or }
-  s = s.replace(/,\s*([\]}])/g, '$1');
+  // Fix missing commas between } and { in arrays (most common Claude issue)
+  s = s.replace(/\}\s*\n(\s*)\{/g,  '},\n$1{');
+  s = s.replace(/\]\s*\n(\s*)\[/g,  '],\n$1[');
+  // Remove trailing commas before ] or }
+  s = s.replace(/,(\s*[\]}])/g, '$1');
 
-  // Pass 2: fix unescaped newlines/tabs/carriage-returns inside string values
-  // Walk character-by-character to know when we're inside a string
+  // Fix unescaped newlines/tabs/carriage-returns inside string values
   let out = '', inStr = false, esc = false;
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
