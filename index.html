@@ -727,9 +727,7 @@ JSONのみ返すこと（説明・マークダウン不要）:
     const txtBlk  = result.content?.find(b => b.type === 'text');
     if (!txtBlk?.text) throw new Error('テキスト応答がありません');
 
-    const jsonStr = txtBlk.text.trim()
-      .replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
-    applyParsed(JSON.parse(jsonStr));
+    applyParsed(extractJson(txtBlk.text));
     document.getElementById('url-input').value = '';
 
   } catch(e) {
@@ -750,12 +748,37 @@ function toggleJsonMode() {
   setTimeout(renderAll, 30);
 }
 
+/* ══════════════════════════════════════════
+   ROBUST JSON EXTRACTOR
+   Handles: prose before/after, ```json fences, raw objects
+══════════════════════════════════════════ */
+function extractJson(text) {
+  // 1. ```json ... ``` block anywhere in the text
+  const fenced = text.match(/```json\s*([\s\S]*?)\s*```/);
+  if (fenced) return JSON.parse(fenced[1].trim());
+
+  // 2. ``` ... ``` block (no language tag)
+  const plain = text.match(/```\s*([\s\S]*?)\s*```/);
+  if (plain) {
+    try { return JSON.parse(plain[1].trim()); } catch(_) {}
+  }
+
+  // 3. First { ... } object in the text
+  const start = text.indexOf('{');
+  const end   = text.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    return JSON.parse(text.slice(start, end + 1));
+  }
+
+  // 4. Fallback: parse as-is
+  return JSON.parse(text.trim());
+}
+
 function applyJson() {
   const raw = document.getElementById('json-in').value.trim();
   if (!raw) { setStatus('JSONを貼り付けてください', 'err'); return; }
   try {
-    const clean = raw.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
-    applyParsed(JSON.parse(clean));
+    applyParsed(extractJson(raw));
     document.getElementById('json-in').value = '';
   } catch(e) {
     setStatus('JSON形式エラー: ' + e.message, 'err');
