@@ -711,12 +711,12 @@ JSONのみ返すこと（説明・マークダウン不要）:
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
+        system: 'You are a JSON-only responder. Output ONLY a valid JSON object — no prose, no markdown, no code fences, no explanation before or after. Your entire response must be parseable by JSON.parse().',
         model: model(),
         max_tokens: 2048,
         tools: [{ type: 'web_search_20250305', name: 'web_search' }],
         messages: [
-          { role: 'user', content: prompt },
-          { role: 'assistant', content: '{' }  // prefill: force JSON start
+          { role: 'user', content: prompt }
         ]
       })
     });
@@ -730,7 +730,7 @@ JSONのみ返すこと（説明・マークダウン不要）:
     const txtBlk  = result.content?.find(b => b.type === 'text');
     if (!txtBlk?.text) throw new Error('テキスト応答がありません');
 
-    applyParsed(extractJson('{' + txtBlk.text));
+    applyParsed(extractJson(txtBlk.text));
     document.getElementById('url-input').value = '';
 
   } catch(e) {
