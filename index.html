@@ -754,8 +754,25 @@ function toggleJsonMode() {
             trailing commas, truncated responses
 ══════════════════════════════════════════ */
 function cleanJsonStr(s) {
-  // Remove trailing commas before ] or }
-  return s.replace(/,\s*([\]}])/g, '$1');
+  // Pass 1: remove trailing commas before ] or }
+  s = s.replace(/,\s*([\]}])/g, '$1');
+
+  // Pass 2: fix unescaped newlines/tabs/carriage-returns inside string values
+  // Walk character-by-character to know when we're inside a string
+  let out = '', inStr = false, esc = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (esc)          { out += c; esc = false; continue; }
+    if (c === '\\')   { out += c; esc = true;  continue; }
+    if (c === '"')    { out += c; inStr = !inStr; continue; }
+    if (inStr) {
+      if      (c === '\n') { out += '\\n'; continue; }
+      else if (c === '\r') { out += '\\r'; continue; }
+      else if (c === '\t') { out += '\\t'; continue; }
+    }
+    out += c;
+  }
+  return out;
 }
 
 function extractJson(text) {
